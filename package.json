@@ -1,0 +1,28 @@
+{
+  "name": "template",
+  "version": "0.0.0",
+  "description": "Base template for nodejs project",
+  "author": "Andrey Afoninsky",
+  "license": "NONE",
+  "main": "src",
+  "scripts": {
+    "start": "mfleet",
+    "semantic-release": "semantic-release"
+  },
+  "devDependencies": {
+    "eslint": "^5.9.0",
+    "eslint-config-prettier": "^4.0.0",
+    "eslint-plugin-prettier": "^3.0.0",
+    "prettier": "^1.15.2"
+  },
+  "dependencies": {
+    "@microfleet/core": "^12.0.1",
+    "config": "^3.0.1"
+  },
+  "husky": {
+    "hooks": {
+      "commit-msg": "commitlint -e $HUSKY_GIT_PARAMS",
+      "prepare-commit-msg": "./node_modules/@makeomatic/deploy/git-hooks/prepare-commit-msg $HUSKY_GIT_PARAMS"
+    }
+  }
+}

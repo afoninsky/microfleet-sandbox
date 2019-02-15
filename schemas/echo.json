@@ -1,4 +1,3 @@
 {
-  "$id": "echo",
-  "type": "object"
+  "$id": "echo"
 }

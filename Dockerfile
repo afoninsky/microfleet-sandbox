@@ -6,5 +6,5 @@ COPY package.json $NODE_DIR
 RUN yarn install --production
 COPY . $NODE_DIR
 
-EXPOSE 8080
+EXPOSE 3000
 CMD ["yarn", "start"]

@@ -1,19 +1,13 @@
 const { ActionTransport } = require('@microfleet/core')
 
-async function handler() {
-  console.log(123)
-  // console.log(...arguments)
-  return {
-    qwe: 'asd'
-  }
+async function handler(request) {
+  const { headers } = request
+  // request.transportRequest - hapi request goes here
+  console.log('incoming request, headers:')
+  console.log(headers)
+  return headers
 }
 
 handler.transports = [ActionTransport.http]
-handler.transportOptions = {
-  [ActionTransport.http]: {
-    methods: ['get']
-  }
-}
-handler.schema = 'echo'
 
 module.exports = handler

@@ -2,7 +2,7 @@ apiVersion: skaffold/v1beta4
 kind: Config
 build:
   artifacts:
-  - image: ???
+  - image: vkfont/debug
   tagPolicy:
     envTemplate:
       template: '{{.IMAGE_NAME}}:{{.TAG}}'

@@ -1,1 +1,13 @@
 name: tracer
+plugins: ["logger", "validator", "router", "http", "prometheus", "opentracing"]
+
+router:
+  routes:
+    directory: src/actions
+
+logger:
+  debug: true
+  defaultLogger: true
+  options: # https://github.com/pinojs/pino/blob/HEAD/docs/api.md#options
+    level: debug
+    base: null

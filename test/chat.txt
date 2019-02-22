@@ -1,0 +1,211 @@
+/**
+ * Ensures integration flow between ms-users and tinode auth works
+ * https://github.com/tinode/chat/blob/master/docs/API
+ */
+const path = require('path')
+const config = require('config')
+const grpc = require('@grpc/grpc-js')
+// const grpc = require('grpc')
+const assert = require('assert')
+const jwt = require('jsonwebtoken')
+
+const { loadDefinitions, timeoutAsync, randomID, sendAndWait } = require('./fixtures/helpers')
+
+describe('test chat workflow @staging', () => {
+  const def = loadDefinitions({
+    chat: path.resolve(
+      __dirname,
+      '../node_modules/@streamlayer/protofiles/src/chat/pbx/model.proto'
+    ),
+    users: path.resolve(__dirname, '../node_modules/@streamlayer/protofiles/src/users/users.proto')
+  })
+
+  const usersClient = new def.users.streamlayer.users.Users(
+    `${config.hosts.proxy}:${config.securePort}`,
+    grpc.credentials.createSsl()
+  )
+
+  function generateChatStream() {
+    const client = new def.chat.pbx.Node(
+      `${config.hosts.chat}:${config.securePort}`,
+      grpc.credentials.createSsl()
+      //   'localhost:16061',
+      //   grpc.credentials.createInsecure()
+    )
+    return client.MessageLoop()
+  }
+
+  const streams = {}
+  const users = {}
+
+  const constChannelTag = 'debug'
+
+  config.users.forEach(user => {
+    users[user.id] = {}
+    streams[user.id] = generateChatStream()
+
+    let userToken
+    // let userId
+
+    describe(`auth user ${user.id}`, () => {
+      console.log(user)
+      it.only('gets JWT token from ms-users', done => {
+        usersClient.Login(user, (err, res) => {
+          console.log(1, err)
+          console.log(2, res)
+          process.exit()
+          assert.equal(res.data.type, 'user')
+          userToken = res.meta.jwt
+
+          // ensure token is valid
+          const token = jwt.decode(userToken)
+          assert.equal(token.iss, 'ms-users', 'expects to be issued by ms-users')
+          assert.equal(token.aud, 'api', 'expects default audience for debug purposes')
+
+          done(err)
+        })
+      })
+
+      it('creates bi-directional stream with the chat', async () => {
+        await sendAndWait(streams[user.id], 'hi', { ver: '0.15.8-rest' })
+      })
+
+      it('auths in chat using ms-users credentials', async () => {
+        const scheme = 'rest'
+        const secret = Buffer.from(userToken)
+        const { ctrl } = await sendAndWait(streams[user.id], 'login', { scheme, secret })
+        assert.equal(ctrl.params.authlvl.toString(), '"auth"')
+        assert.ok(ctrl.params.user.toString().startsWith('"usr'))
+
+        users[user.id].id = JSON.parse(ctrl.params.user)
+
+        await sendAndWait(streams[user.id], 'sub', { topic: 'fnd' })
+      })
+
+      it('update own profile', async () => {
+        // get existing tags and remove ones with `test:` prefix
+        const { meta } = await sendAndWait(
+          streams[user.id],
+          'get',
+          { topic: 'fnd', query: { what: 'tags' } },
+          null,
+          5000
+        )
+        const tags = meta[0].tags.filter(tag => !tag.startsWith('test:'))
+
+        // append new tag by rewriting the whole array
+        tags.push(`test:${randomID()}`)
+        await sendAndWait(streams[user.id], 'set', { topic: 'fnd', query: { tags } })
+      })
+
+      it('view own profile', async () => {
+        const topic = 'me'
+        const query = { what: 'desc' }
+        const { meta } = await sendAndWait(streams[user.id], 'get', { topic, query }, 1)
+        assert.equal(meta.length, 1)
+      })
+    })
+  })
+
+  describe('search', () => {
+    const randomUserTag = `test:${randomID()}`
+    const anotherUserId = 'renat0014@gmail.com'
+    const userId = 'v@makeomatic.ru'
+
+    before('create seach tag', async () => {
+      const { meta } = await sendAndWait(
+        streams[anotherUserId],
+        'get',
+        { topic: 'fnd', query: { what: 'tags' } },
+        null,
+        5000
+      )
+      const tags = meta[0].tags.filter(tag => !tag.startsWith('test:'))
+
+      // append new tag by rewriting the whole array
+      tags.push(randomUserTag)
+      await sendAndWait(streams[anotherUserId], 'set', { topic: 'fnd', query: { tags } })
+    })
+
+    it('find another user by tag', async () => {
+      // set search query
+      await sendAndWait(streams[userId], 'set', {
+        topic: 'fnd',
+        query: {
+          desc: {
+            public: Buffer.from(JSON.stringify(randomUserTag))
+          }
+        }
+      })
+
+      // get query results
+      const { meta } = await sendAndWait(
+        streams[userId],
+        'get',
+        { topic: 'fnd', query: { what: 'sub' } },
+        1
+      )
+
+      assert.equal(meta.length, 1)
+      // another user found
+      assert.equal(users[anotherUserId].id, meta[0].sub[0].userId)
+    })
+  })
+
+  describe('messaging', () => {
+    const firstUserStream = streams['renat0014@gmail.com']
+    const secondUserStream = streams['v@makeomatic.ru']
+    let topic
+
+    it('creates new topic by user #1', async () => {
+      const { ctrl } = await sendAndWait(firstUserStream, 'sub', {
+        topic: 'new',
+        set_query: {
+          tags: [constChannelTag],
+          desc: {
+            public: Buffer.from(JSON.stringify({ fn: 'test topic' }))
+          }
+        }
+      })
+      topic = ctrl.topic
+    })
+
+    it('joins topic by user #2', async () => {
+      await sendAndWait(secondUserStream, 'sub', { topic })
+    })
+
+    it('sends message to a common topic', async () => {
+      // OK, it's more of a misunderstanding than a bug. The content cannot be a
+      // naked string. It must be a json string. For example, in C-like languages
+      // it must be content = "\"t\"", not content = "t"
+      const storeData = target => ({ data }) => {
+        if (data) {
+          target.push(data)
+        }
+      }
+      const first = []
+      const second = []
+      const content = Buffer.from(JSON.stringify('test message'))
+      firstUserStream.on('data', storeData(first))
+      secondUserStream.on('data', storeData(second))
+      await sendAndWait(firstUserStream, 'pub', { topic, content })
+
+      // wait a little to ensure events are caught
+      await timeoutAsync(1000)
+      assert.equal(first.length, 1)
+      assert.equal(second.length, 1)
+      assert.equal(
+        first[0].fromUserId,
+        second[0].fromUserId,
+        'both users should receive same message'
+      )
+    })
+
+    it('receives group history by second user from the common topic', async () => {
+      const waitForMs = 1000
+      const query = { what: 'data' }
+      const { data } = await sendAndWait(secondUserStream, 'get', { topic, query }, null, waitForMs)
+      assert.equal(data.length, 1)
+    })
+  })
+})

@@ -1,9 +1,21 @@
-name: tracer
-plugins: ["logger", "validator", "router", "http", "prometheus", "opentracing"]
+name: clever
+plugins: ["logger", "validator", "router", "http", "amqp", "prometheus"]
+
+http:
+  server:
+    handler: hapi
+    port: 3000
+  router:
+    enabled: true
 
 router:
   routes:
     directory: src/actions
+
+# amqp:
+#   transport:
+#     connection:
+#       host: localhost
 
 logger:
   debug: true
@@ -11,3 +23,32 @@ logger:
   options: # https://github.com/pinojs/pino/blob/HEAD/docs/api.md#options
     level: debug
     base: null
+
+# opentracing:
+#   config:
+#     disable: false
+#     serviceName: tracer
+#     sampler:
+#       type: const
+#       param: 1
+#     reporter:
+#       # collectorEndpoint: http://localhost:14268/api/traces
+#       agentHost: localhost
+#       agentPort: 6832
+#   options:
+#     tags:
+#       customtag: "true"
+
+tests:
+  hosts:
+    debug: test.staging.streamlayer.io
+    dashboard: admin.staging.streamlayer.io
+    web: grpc-web.staging.streamlayer.io
+    proxy: grpc.staging.streamlayer.io
+    chat: chat.staging.streamlayer.io
+  securePort: 443
+  users:
+    - id: v@makeomatic.ru
+      password: verylongdemopassword
+    - id: renat0014@gmail.com
+      password: verylongdemopassword

@@ -17,7 +17,7 @@
     "prettier": "^1.18.2"
   },
   "dependencies": {
-    "@grpc/grpc-js": "^0.5.2",
+    "@grpc/grpc-js": "^1.1.8",
     "@grpc/proto-loader": "^0.5.1",
     "@microfleet/core": "^14.0.2",
     "@microfleet/validation": "^8.1.2",
